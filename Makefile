@@ -37,3 +37,15 @@ valgrind: _clear all
 
 generateKeys:
 	./build/bin/robustFileDating -g key
+
+verify: all
+	#####################################
+	#                                   #
+	#                                   #
+	#####################################
+	./build/bin/robustFileDating $(TEST_FILE1)
+	#####################################
+	#                                   #
+	#                                   #
+	#####################################
+	./build/bin/robustFileDating $(TEST_FILE2)

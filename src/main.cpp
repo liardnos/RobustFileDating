@@ -87,6 +87,35 @@ std::string hash_tostring(unsigned char *hash, unsigned int size) {
     return str;
 }
 
+unsigned char hex_to_char(unsigned char h1, unsigned char h2) {
+    char const * const values = "0123456789abcdef";
+    unsigned char res = 0; 
+    if (h1 != 0) {
+        for (unsigned char i = 0; values[i]; i++) {
+            if (values[i] == h1) {
+                res |= i*16;
+                break;
+            }
+        }
+    }
+
+    for (unsigned char i = 0; values[i]; i++) {
+        if (values[i] == h2) {
+            res |= i;
+            break;
+        }
+    }
+    return res;
+}
+
+unsigned char *string_tohash(std::string const &hex_chars) {
+    size_t len = hex_chars.length(); 
+    unsigned char *bytes = new unsigned char[len/2];
+    for (size_t i = 0; i < len; i += 2) {
+        bytes[i/2] = hex_to_char(hex_chars[i], hex_chars[i+1]);
+    }    
+    return bytes;
+}
 
 int sha256_file(char *path, unsigned char hash[SHA256_DIGEST_LENGTH]) {
     std::streampos size;
@@ -113,16 +142,6 @@ int sha256_file(char *path, unsigned char hash[SHA256_DIGEST_LENGTH]) {
     delete[] buffer;
     return 0;
 }
-
-/*void writeheader(char fileHash[65], uint64_t time, std::string keyFile) {
-    FILE *fp = fopen(private_key_file_name, "r");
-
-    RSA *rsa = PEM_read_RSAPrivateKey(fp, NULL, NULL, NULL);
-
-    fclose(fp);
-    
-    std::cout << fileHash << ":" << fileName << ":" << time << std::endl;
-}*/
 
 #define TIME_SIZE sizeof(uint64_t)
 
@@ -151,6 +170,7 @@ int main(int argc, char **argv) {
         int rsaPrivateKeySize = RSA_size(rsaPrivate);
         memcpy(hash+SHA256_DIGEST_LENGTH, &now, TIME_SIZE);
         unsigned char *hashCrypted = new unsigned char[rsaPrivateKeySize];
+        memset(hashCrypted, 0, rsaPrivateKeySize);
         int rsa_outlen = RSA_private_encrypt(
             SHA256_DIGEST_LENGTH + TIME_SIZE, (unsigned char *)hash, hashCrypted,
             rsaPrivate, RSA_PKCS1_PADDING); // todo add time to key
@@ -166,10 +186,12 @@ int main(int argc, char **argv) {
         rsaPubStr[size] = 0;
         {
             int j = 0;
-            for (int i = 0; rsaPubStr[i]; i++) 
+            int i = strlen("-----BEGIN RSA PUBLIC KEY-----");
+            for (; rsaPubStr[i]; i++) 
                 if (rsaPubStr[i] != '\n')
                     rsaPubStr[j++] = rsaPubStr[i];
-            rsaPubStr[j] = 0;
+            rsaPubStr[j-strlen("-----END RSA PUBLIC KEY-----")] = 0;
+
         }
 
         std::string const path = argv[1] + std::string(".date");
@@ -178,30 +200,13 @@ int main(int argc, char **argv) {
 
         outfile << "crypt=" << hash_tostring(hashCrypted, rsa_outlen) << std::endl;
         outfile << "rsa_pub=" << rsaPubStr << std::endl;
-        outfile << "time=" << now  << std::endl;
+        //outfile << "time=" << now  << std::endl;
         std::cout << "generated file: " << path << std::endl;
 
         delete[] rsaPubStr;
         delete[] hashCrypted;
 
 
-        //FILE *fp2 = fopen((argv[2] + std::string("_public.pem")).c_str(), "r");
-        //if (!fp2) throw robustFileDatingexception(std::string("cannot open file ") + argv[2] + DEBUGINFORMATION);
-        //RSA *rsaPublic = PEM_read_RSAPublicKey(fp2, NULL, NULL, NULL);
-        //if (!rsaPublic) throw robustFileDatingexception(std::string("rsaPublic ") + argv[2] + DEBUGINFORMATION);
-        //fclose(fp2);
-        //int rsaPublicKeySize = RSA_size(rsaPublic);
-        /*char buf[257];
-
-        rsa_outlen = RSA_public_decrypt(
-            rsa_outlen, (unsigned char *)hashCrypted, (unsigned char *)buf,
-            rsaPrivate, RSA_PKCS1_PADDING);
-        buf[rsa_outlen] = 0;
-
-
-
-
-        //writeheader(buf, now);*/
     } else if (argc == 2) {
         // read all .date file
         std::ifstream file((argv[1] + std::string(".date")).c_str(), std::ios::in | std::ios::binary | std::ios::ate);
@@ -212,29 +217,68 @@ int main(int argc, char **argv) {
         file.read(rfdData, size);
         rfdData[size] = 0;
         std::string rfdString(rfdData);
-        std::cout << rfdData << std::endl;
         //
 
         std::map<std::string, std::string> hashMap;
         size_t offset = 0;
         size_t pos;
         while ((pos = rfdString.find('\n', offset)) != std::string::npos) {
-            std::string sub = rfdString.substr(offset, pos);
-            std::cout << offset << " : " << sub << std::endl;
-            offset += sub.length();
+            std::string sub = rfdString.substr(offset, pos-offset);
+            if (sub.length() == 0)
+                continue;
+            hashMap[sub.substr(0, sub.find('=', 0))] = sub.substr(sub.find('=', 0)+1, sub.length());
+            offset += sub.length()+1;
         }
-
+        delete[] rfdData;
 
         // calc file hash
         unsigned char hash[SHA256_DIGEST_LENGTH];
         sha256_file(argv[1], hash);
         std::string const hashStr = hash_tostring(hash, SHA256_DIGEST_LENGTH);
-        std::cerr << "fileHash=" << hashStr << std::endl;
         //
 
+        //std::string tmpPath = hashStr + ".tmp.pem";
+        //std::FILE *tmpFile = fopen(tmpPath.c_str(), "w+");
+        std::FILE *tmpFile = std::tmpfile();
+        if (!tmpFile) throw robustFileDatingexception("cannot crete .tmp file" + DEBUGINFORMATION);
+        std::fputs("-----BEGIN RSA PUBLIC KEY-----\n", tmpFile);
+        std::fputs(hashMap["rsa_pub"].c_str(), tmpFile);
+        std::fputs("\n-----END RSA PUBLIC KEY-----\n", tmpFile);
+        std::rewind(tmpFile);
+        RSA *rsaPublic = PEM_read_RSAPublicKey(tmpFile, NULL, NULL, NULL);
+        if (!rsaPublic) throw robustFileDatingexception("cannot load pub_key" + DEBUGINFORMATION);
 
+        int rsaPublicKeySize = RSA_size(rsaPublic);
 
-        delete[] rfdData;
+        if ((size_t)rsaPublicKeySize != hashMap["crypt"].length()/2) throw robustFileDatingexception("invalid crypted lenght" + DEBUGINFORMATION);
+
+        unsigned char *cryptedBuf = string_tohash(hashMap["crypt"]);
+
+        unsigned char buf[rsaPublicKeySize+1];
+        memset(buf, 0, rsaPublicKeySize);
+        int rsa_outlen = RSA_public_decrypt(
+            rsaPublicKeySize, (unsigned char *)cryptedBuf, (unsigned char *)buf,
+            rsaPublic, RSA_PKCS1_PADDING);
+        buf[rsa_outlen] = 0;
+
+        uint32_t saveTime;
+        memcpy(&saveTime, buf+SHA256_DIGEST_LENGTH, sizeof(saveTime));
+        buf[SHA256_DIGEST_LENGTH] = 0;
+
+        bool good = true;
+        for (int i = 0; i < SHA256_DIGEST_LENGTH; i++) {
+            if (buf[i] != hash[i]) {
+                good = false;
+                break;
+            }
+        }
+        if (good) {
+            std::cout << "last modification date: " << saveTime << std::endl;
+        } else {
+            std::cout << "!!!file or .date has been modified!!!" << std::endl;
+        }
+        delete[] cryptedBuf;
+
     }
     double totTs = std::chrono::duration<double, std::ratio<1, 1>>(std::chrono::high_resolution_clock::now()-hashClock).count();
     std::cerr << "END " << totTs << "s" << std::endl;
