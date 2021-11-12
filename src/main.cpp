@@ -8,15 +8,22 @@
 #include <map>
 
 #include <string.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 
 #include <openssl/sha.h>
 #include <openssl/rsa.h>
 #include <openssl/pem.h>
 
+#if __WIN32__
+#define stat64 _stat64
+#endif
 
 #define BLOCK_SIZE ((size_t)1024*1024)
 
 #define DEBUGINFORMATION std::string(" | from ") + std::string(__FILE__) + std::string(" L") + std::to_string(__LINE__)
+
+#define TIME_SIZE sizeof(uint64_t)
 
 class robustFileDatingexception : public std::exception {
     public:
@@ -29,6 +36,16 @@ class robustFileDatingexception : public std::exception {
         std::string _message;
         std::string _component;
 };
+
+long int fsize(const char *filename) {
+    struct stat st; 
+
+    if (stat(filename, &st) == 0) {
+        std::cout << filename << " : " << st.st_size << std::endl;
+        return st.st_size;
+    }
+    return -1; 
+}
 
 void generateRSAKeyPair(std::string const &name) {
     int ret = 0;
@@ -118,11 +135,15 @@ unsigned char *string_tohash(std::string const &hex_chars) {
 }
 
 int sha256_file(char *path, unsigned char hash[SHA256_DIGEST_LENGTH]) {
-    std::streampos size;
+    std::FILE *tmpFile = fopen(path, "r+");
+    if (!tmpFile) throw robustFileDatingexception("cannot open file" + DEBUGINFORMATION);
+    fclose(tmpFile);
     std::ifstream file(path, std::ios::in | std::ios::binary | std::ios::ate);
     if (!file.is_open()) throw robustFileDatingexception("cannot open file" + DEBUGINFORMATION);
 
-    size = file.tellg();
+    
+    long int size = fsize(path);
+    if (size == -1) throw robustFileDatingexception("cannot find file size" + DEBUGINFORMATION);
     file.seekg(0, std::ios::beg);
 
     SHA256_CTX sha256;
@@ -143,14 +164,13 @@ int sha256_file(char *path, unsigned char hash[SHA256_DIGEST_LENGTH]) {
     return 0;
 }
 
-#define TIME_SIZE sizeof(uint64_t)
-
 int main(int argc, char **argv) {
     auto hashClock = std::chrono::high_resolution_clock::now();
     if (std::string(argv[1]) == std::string("-g") && argc == 3) {
         std::cout << "generate keys: " << argv[2] << std::endl;
         generateRSAKeyPair(std::string(argv[2]));        
     } else if (argc == 3) {
+        std::cout << "dating " << argv[1] << " with " << argv[2] << std::endl;
         unsigned char hash[SHA256_DIGEST_LENGTH+TIME_SIZE];
         sha256_file(argv[1], hash);
         std::string const hashStr = hash_tostring(hash, SHA256_DIGEST_LENGTH);
@@ -162,7 +182,7 @@ int main(int argc, char **argv) {
         uint64_t now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
         std::cerr << "time=" << now << std::endl;
 
-        FILE *fp = fopen((argv[2] + std::string("_private.pem")).c_str(), "r");
+        FILE *fp = fopen((argv[2] + std::string("_private.pem")).c_str(), "r+");
         if (!fp) throw robustFileDatingexception(std::string("cannot open file ") + argv[2] + DEBUGINFORMATION);
         RSA *rsaPrivate = PEM_read_RSAPrivateKey(fp, NULL, NULL, NULL);
         if (!rsaPrivate) throw robustFileDatingexception(std::string("rsaPrivate ") + argv[2] + DEBUGINFORMATION);
@@ -175,11 +195,14 @@ int main(int argc, char **argv) {
             SHA256_DIGEST_LENGTH + TIME_SIZE, (unsigned char *)hash, hashCrypted,
             rsaPrivate, RSA_PKCS1_PADDING); // todo add time to key
 
-        
-        std::ifstream file((argv[2] + std::string("_public.pem")).c_str(), std::ios::in | std::ios::binary | std::ios::ate);
+        std::string path2 = (argv[2] + std::string("_public.pem"));
+        std::ifstream file(path2.c_str(), std::ios::in | std::ios::binary | std::ios::ate);
         if (!file.is_open()) throw robustFileDatingexception("cannot open file" + DEBUGINFORMATION);
 
-        std::streampos size = file.tellg();
+        long int size = fsize(path2.c_str());
+        if (size == -1) throw robustFileDatingexception("cannot find file size" + DEBUGINFORMATION);
+
+
         file.seekg(0, std::ios::beg);
         char *rsaPubStr = new char[(size_t)size+1];
         file.read(rsaPubStr, size);
@@ -209,9 +232,12 @@ int main(int argc, char **argv) {
 
     } else if (argc == 2) {
         // read all .date file
-        std::ifstream file((argv[1] + std::string(".date")).c_str(), std::ios::in | std::ios::binary | std::ios::ate);
+        std::string path1 = argv[1] + std::string(".date");
+        std::ifstream file(path1.c_str(), std::ios::in | std::ios::binary | std::ios::ate);
         if (!file.is_open()) throw robustFileDatingexception("cannot open .date file" + DEBUGINFORMATION);
-        std::streampos size = file.tellg();
+        long int size = fsize(path1.c_str());
+        if (size == -1) throw robustFileDatingexception("cannot open .date file" + DEBUGINFORMATION);
+
         file.seekg(0, std::ios::beg);
         char *rfdData = new char[(size_t)size+1];
         file.read(rfdData, size);

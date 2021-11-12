@@ -4,6 +4,7 @@ TEST_FILE2 = "2021-09-08 10-41-51.mkv"
 
 all:
 	cd build && make -j 8 || clear && make
+	cp ./build/bin/robustFileDating .
 
 run: all
 	#####################################
@@ -49,3 +50,9 @@ verify: all
 	#                                   #
 	#####################################
 	./build/bin/robustFileDating $(TEST_FILE2)
+
+date_all:
+	find -type f -exec "./robustFileDating" "{}" "key" \;
+
+undate_all:
+	find -type f -exec "rm" "{}.date" \;
