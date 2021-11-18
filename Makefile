@@ -68,7 +68,7 @@ verify: all
 	./build/bin/$(BINARY) $(TEST_FILE2)
 
 date_all:
-	find -type f -exec "./$(BINARY)" "{}" "key" \;
+	find -type f -exec "./$(BINARY)" "key" "{}" \;
 
 undate_all:
 	find -type f -exec "rm" "{}.date" \;
