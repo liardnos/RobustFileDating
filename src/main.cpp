@@ -179,6 +179,7 @@ int sha256_file(char *path, unsigned char hash[SHA256_DIGEST_LENGTH]) {
 }
 
 int main(int argc, char **argv) {
+    int returnValue = 0;
     auto hashClock = std::chrono::high_resolution_clock::now();
     if (std::string(argv[1]) == std::string("-g") && argc == 3) {
         std::cout << "generate keys: " << argv[2] << std::endl;
@@ -320,13 +321,14 @@ int main(int argc, char **argv) {
             }
         }
         if (good) {
-            std::cout << "last modification date: " << saveTime << std::endl;
+            std::cout << "signature date: " << saveTime << std::endl;
         } else {
             std::cout << "!!!file or .date has been modified!!!" << std::endl;
+            returnValue = 84;
         }
         delete[] cryptedBuf;
-
     }
     double totTs = std::chrono::duration<double, std::ratio<1, 1>>(std::chrono::high_resolution_clock::now()-hashClock).count();
     std::cerr << "END " << totTs << "s" << std::endl;
+    return returnValue;
 }

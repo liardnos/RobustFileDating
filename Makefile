@@ -7,7 +7,7 @@ BINARY = robustFileDating
 
 
 all:
-	rm $(BINARY)
+	rm -f $(BINARY)
 	cd build && make -j 8 || clear && make
 	cp ./build/bin/$(BINARY) .
 
@@ -34,6 +34,10 @@ re:
 
 _clear:
 	clear
+
+install: all
+	sudo cp ./build/bin/$(BINARY) /bin/
+
 
 valgrind: _clear all
 	#####################################
