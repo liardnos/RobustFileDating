@@ -37,6 +37,17 @@ class robustFileDatingexception : public std::exception {
         std::string _component;
 };
 
+#define PBSTR "||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||"
+#define PBWIDTH 60
+
+void printProgress(double percentage) {
+    int val = (int) (percentage * 100);
+    int lpad = (int) (percentage * PBWIDTH);
+    int rpad = PBWIDTH - lpad;
+    printf("\r%3d%% [%.*s%*s]", val, lpad, PBSTR, rpad, "");
+    fflush(stdout);
+}
+
 long int fsize(const char *filename) {
     struct stat st; 
 
@@ -136,13 +147,13 @@ unsigned char *string_tohash(std::string const &hex_chars) {
 
 int sha256_file(char *path, unsigned char hash[SHA256_DIGEST_LENGTH]) {
     std::FILE *tmpFile = fopen(path, "r+");
-    if (!tmpFile) throw robustFileDatingexception("cannot open file" + DEBUGINFORMATION);
+    if (!tmpFile) throw robustFileDatingexception(std::string("cannot open file: ") + path + DEBUGINFORMATION);
     fclose(tmpFile);
     std::ifstream file(path, std::ios::in | std::ios::binary | std::ios::ate);
     if (!file.is_open()) throw robustFileDatingexception("cannot open file" + DEBUGINFORMATION);
 
-    
     long int size = fsize(path);
+    long int size_back = size;
     if (size == -1) throw robustFileDatingexception("cannot find file size" + DEBUGINFORMATION);
     file.seekg(0, std::ios::beg);
 
@@ -151,11 +162,14 @@ int sha256_file(char *path, unsigned char hash[SHA256_DIGEST_LENGTH]) {
     char * const buffer = new char[BLOCK_SIZE];
     if(!buffer)  throw robustFileDatingexception("cannot alloc buffer" + DEBUGINFORMATION);
     while (size) {
+        printProgress(1-(double)size/size_back);
         size_t readSize = std::min(BLOCK_SIZE, (size_t)size);
         file.read(buffer, readSize);
         size -= readSize;
         SHA256_Update(&sha256, buffer, readSize);
     }
+    printProgress(1-(double)size/size_back);
+    std::cout << std::endl;
     SHA256_Final(hash, &sha256);
 
     //sha256_hash_string(hash, outputBuffer);
@@ -169,65 +183,72 @@ int main(int argc, char **argv) {
     if (std::string(argv[1]) == std::string("-g") && argc == 3) {
         std::cout << "generate keys: " << argv[2] << std::endl;
         generateRSAKeyPair(std::string(argv[2]));        
-    } else if (argc == 3) {
-        std::cout << "dating " << argv[1] << " with " << argv[2] << std::endl;
-        unsigned char hash[SHA256_DIGEST_LENGTH+TIME_SIZE];
-        sha256_file(argv[1], hash);
-        std::string const hashStr = hash_tostring(hash, SHA256_DIGEST_LENGTH);
-        std::cerr << "fileHash=" << hashStr << std::endl;
+    } else if (argc >= 3) {
 
-        std::string const keyname = "tmp";
-        //generateRSAKeyPair(keyname);
-
-        uint64_t now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
-        std::cerr << "time=" << now << std::endl;
-
-        FILE *fp = fopen((argv[2] + std::string("_private.pem")).c_str(), "r+");
-        if (!fp) throw robustFileDatingexception(std::string("cannot open file ") + argv[2] + DEBUGINFORMATION);
+        FILE *fp = fopen((argv[1] + std::string("_private.pem")).c_str(), "r+");
+        if (!fp) throw robustFileDatingexception(std::string("cannot open file ") + (argv[1] + std::string("_private.pem")) + DEBUGINFORMATION);
         RSA *rsaPrivate = PEM_read_RSAPrivateKey(fp, NULL, NULL, NULL);
-        if (!rsaPrivate) throw robustFileDatingexception(std::string("rsaPrivate ") + argv[2] + DEBUGINFORMATION);
+        if (!rsaPrivate) throw robustFileDatingexception(std::string("rsaPrivate ") + argv[1] + DEBUGINFORMATION);
         fclose(fp);
         int rsaPrivateKeySize = RSA_size(rsaPrivate);
-        memcpy(hash+SHA256_DIGEST_LENGTH, &now, TIME_SIZE);
-        unsigned char *hashCrypted = new unsigned char[rsaPrivateKeySize];
-        memset(hashCrypted, 0, rsaPrivateKeySize);
-        int rsa_outlen = RSA_private_encrypt(
-            SHA256_DIGEST_LENGTH + TIME_SIZE, (unsigned char *)hash, hashCrypted,
-            rsaPrivate, RSA_PKCS1_PADDING); // todo add time to key
 
-        std::string path2 = (argv[2] + std::string("_public.pem"));
-        std::ifstream file(path2.c_str(), std::ios::in | std::ios::binary | std::ios::ate);
-        if (!file.is_open()) throw robustFileDatingexception("cannot open file" + DEBUGINFORMATION);
+        for (int i = 0; i < argc - 2; i++) {
+            int fileid = i + 2;
+            std::cout << "dating " << argv[fileid] << " with " << argv[1] << std::endl;
+            unsigned char hash[SHA256_DIGEST_LENGTH+TIME_SIZE];
+            sha256_file(argv[fileid], hash);
+            std::string const hashStr = hash_tostring(hash, SHA256_DIGEST_LENGTH);
+            std::cerr << "fileHash=" << hashStr << std::endl;
 
-        long int size = fsize(path2.c_str());
-        if (size == -1) throw robustFileDatingexception("cannot find file size" + DEBUGINFORMATION);
+            std::string const keyname = "tmp";
+            //generateRSAKeyPair(keyname);
+
+            uint64_t now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+            std::cerr << "time=" << now << std::endl;
 
 
-        file.seekg(0, std::ios::beg);
-        char *rsaPubStr = new char[(size_t)size+1];
-        file.read(rsaPubStr, size);
-        rsaPubStr[size] = 0;
-        {
-            int j = 0;
-            int i = strlen("-----BEGIN RSA PUBLIC KEY-----");
-            for (; rsaPubStr[i]; i++) 
-                if (rsaPubStr[i] != '\n')
-                    rsaPubStr[j++] = rsaPubStr[i];
-            rsaPubStr[j-strlen("-----END RSA PUBLIC KEY-----")] = 0;
 
+            memcpy(hash+SHA256_DIGEST_LENGTH, &now, TIME_SIZE);
+            unsigned char *hashCrypted = new unsigned char[rsaPrivateKeySize];
+            memset(hashCrypted, 0, rsaPrivateKeySize);
+            int rsa_outlen = RSA_private_encrypt(
+                SHA256_DIGEST_LENGTH + TIME_SIZE, (unsigned char *)hash, hashCrypted,
+                rsaPrivate, RSA_PKCS1_PADDING); // todo add time to key
+
+            std::string path2 = (argv[1] + std::string("_public.pem"));
+            std::ifstream file(path2.c_str(), std::ios::in | std::ios::binary | std::ios::ate);
+            if (!file.is_open()) throw robustFileDatingexception("cannot open file" + DEBUGINFORMATION);
+
+            long int size = fsize(path2.c_str());
+            if (size == -1) throw robustFileDatingexception("cannot find file size" + DEBUGINFORMATION);
+
+
+            file.seekg(0, std::ios::beg);
+            char *rsaPubStr = new char[(size_t)size+1];
+            file.read(rsaPubStr, size);
+            rsaPubStr[size] = 0;
+            {
+                int j = 0;
+                int i = strlen("-----BEGIN RSA PUBLIC KEY-----");
+                for (; rsaPubStr[i]; i++) 
+                    if (rsaPubStr[i] != '\n')
+                        rsaPubStr[j++] = rsaPubStr[i];
+                rsaPubStr[j-strlen("-----END RSA PUBLIC KEY-----")] = 0;
+
+            }
+
+            std::string const path = argv[fileid] + std::string(".date");
+            std::ofstream outfile(path.c_str(), std::ios::out | std::ios::binary | std::ios::trunc);
+            if (!outfile.is_open()) throw robustFileDatingexception("cannot create output file" + DEBUGINFORMATION);
+
+            outfile << "crypt=" << hash_tostring(hashCrypted, rsa_outlen) << std::endl;
+            outfile << "rsa_pub=" << rsaPubStr << std::endl;
+            //outfile << "time=" << now  << std::endl;
+            std::cout << "generated file: " << path << std::endl;
+
+            delete[] rsaPubStr;
+            delete[] hashCrypted;
         }
-
-        std::string const path = argv[1] + std::string(".date");
-        std::ofstream outfile(path.c_str(), std::ios::out | std::ios::binary | std::ios::trunc);
-        if (!outfile.is_open()) throw robustFileDatingexception("cannot create output file" + DEBUGINFORMATION);
-
-        outfile << "crypt=" << hash_tostring(hashCrypted, rsa_outlen) << std::endl;
-        outfile << "rsa_pub=" << rsaPubStr << std::endl;
-        //outfile << "time=" << now  << std::endl;
-        std::cout << "generated file: " << path << std::endl;
-
-        delete[] rsaPubStr;
-        delete[] hashCrypted;
 
 
     } else if (argc == 2) {

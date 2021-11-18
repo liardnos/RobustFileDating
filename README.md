@@ -6,7 +6,7 @@ Genrate a new key pair
 
 
 generate a .date for a file
-./robustFileDating file [keyName]
+./robustFileDating [keyName] file1 file2 ...
 
 check file and header integrity
 ./robustFileDating file
