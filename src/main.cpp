@@ -15,12 +15,16 @@
 #include <openssl/sha.h>
 #include <openssl/rsa.h>
 #include <openssl/pem.h>
+#include <mutex>
+#include <thread>
 
 #include <cmath>
 
 #if __WIN32__
 #define stat64 _stat64
 #endif
+
+#define THREAD_COUNT 7
 
 #define BLOCK_SIZE ((size_t)1024*1024)
 
@@ -182,15 +186,117 @@ int sha256_file(char *path, unsigned char hash[SHA256_DIGEST_LENGTH]) {
     return 0;
 }
 
+class KeyFinder {
+public:
+    KeyFinder(uint thread_count, char *str) :
+        _thread_count(thread_count), _str(str)
+    {
+
+    }
+
+    ~KeyFinder() {
+
+    }
+
+    RSA *find() {
+        for (uint i = 0; i < _thread_count; i++) {
+            char *str = strdup(_str);
+            _threads.emplace_back(std::thread(
+                [i, str, this](){
+                    this->find_a_key(str, i);
+                }
+            ));
+        }
+
+        for (auto &thread : _threads)
+            thread.join();
+        return _ret;
+    }
+
+    void find_a_key(char *str, int id) {
+
+        char *rsaPubStr = new char[1024*1024];
+        BIO * keybio = BIO_new(BIO_s_mem());
+        int ret = 0;
+        RSA *rsa = NULL;
+        BIGNUM *bne = NULL;
+        int bits = 512;
+        unsigned long e = RSA_F4;
+
+        bne = BN_new();
+        ret = BN_set_word(bne, e);
+        if (ret != 1)
+            throw robustFileDatingexception("BN_set_word failed" + DEBUGINFORMATION);
+        long int proba = std::pow(64, strlen(str))/55;
+        long int count = 0;
+
+        while (1) {
+            rsa = RSA_new();
+            ret = RSA_generate_key_ex(rsa, bits, bne, NULL);
+            if (ret != 1)
+                throw robustFileDatingexception("RSA_generate_key_ex failed" + DEBUGINFORMATION);
+
+            PEM_write_bio_RSAPublicKey(keybio, rsa);
+            std::string res = "";
+            memset(rsaPubStr, 0, 1024*1024);
+            BIO_read(keybio, rsaPubStr, 1024*1024);
+            {
+                int j = 0;
+                int i = strlen("-----BEGIN RSA PUBLIC KEY-----");
+                for (; rsaPubStr[i]; i++) 
+                    if (rsaPubStr[i] != '\n')
+                        rsaPubStr[j++] = rsaPubStr[i];
+                rsaPubStr[j-strlen("-----END RSA PUBLIC KEY-----")] = 0;
+            }
+
+            if (strstr(rsaPubStr, str)) {
+                std::lock_guard<std::mutex> lock(_mutex);
+                _go = false;
+                _ret = rsa;
+                std::cout << rsaPubStr << std::endl;
+            }
+            //std::cout << "ici" << count << " id="<< id << std::endl;
+            { // end condition
+                std::lock_guard<std::mutex> lock(_mutex);
+                _count++;
+                if (!(count % 50) && id == 0) {
+                    printProgress((float)_count/proba);
+                    std::cout << " " << _count << "/" << proba;
+                }
+                if (!_go)
+                    break;
+            }
+            count++;
+        }
+    }
+
+    bool _go = true;
+    uint64_t _count = 0;
+    std::vector<std::thread> _threads;
+    std::mutex _mutex;
+    uint _thread_count;
+    RSA *_ret = 0;
+    char *_str;
+};
+
+
+
 int main(int argc, char **argv) {
     int returnValue = 0;
     auto hashClock = std::chrono::high_resolution_clock::now();
     if (std::string(argv[1]) == std::string("-g") && (argc == 3 || argc == 4)) {
         std::cout << "generate keys: " << argv[2] << std::endl;
         if (argc == 4) {
-            char *rsaPubStr = new char[1024*1024];
+            
+            KeyFinder finder(THREAD_COUNT, argv[3]);
+            RSA *rsa = finder.find();
+            
             BIO * keybio = BIO_new(BIO_s_mem());
             int ret = 0;
+
+            /*exit(0);
+
+            char *rsaPubStr = new char[1024*1024];
             RSA *rsa = NULL;
             BIGNUM *bne = NULL;
             int bits = 512;
@@ -226,7 +332,8 @@ int main(int argc, char **argv) {
                 }
                 count++;
             } while (!strstr(rsaPubStr, argv[3]));
-            //} while (strncmp(rsaPubStr, argv[3], strlen(argv[3])));
+            //} while (strncmp(rsaPubStr, argv[3], strlen(argv[3])));*/
+
             // 2. save public key
             std::string name = argv[2];
             keybio = BIO_new_file((name + "_public" + ".pem").c_str(), "w+");
