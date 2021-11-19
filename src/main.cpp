@@ -219,12 +219,12 @@ int main(int argc, char **argv) {
                             rsaPubStr[j++] = rsaPubStr[i];
                     rsaPubStr[j-strlen("-----END RSA PUBLIC KEY-----")] = 0;
                 }
-                if (count % 128) {
+                if (!(count % 100)) {
                     printProgress((float)count/proba);
-                    std::cout << count << "/" << proba;
+                    std::cout << " " << count << "/" << proba;
                 }
                 count++;
-            } while (!strstr(rsaPubStr, argv[3]));
+            } while (strstr(rsaPubStr, argv[3]) == 0 || strstr(rsaPubStr, argv[3])-rsaPubStr > 16);
             //} while (strncmp(rsaPubStr, argv[3], strlen(argv[3])));
             // 2. save public key
             std::string name = argv[2];
