@@ -226,8 +226,19 @@ int main(int argc, char **argv) {
                 count++;
             } while (!strstr(rsaPubStr, argv[3]));
             //} while (strncmp(rsaPubStr, argv[3], strlen(argv[3])));
-            std::cout << std::endl;
-            std::cout << rsaPubStr << std::endl;
+            // 2. save public key
+            std::string name = argv[2];
+            keybio = BIO_new_file((name + "_public" + ".pem").c_str(), "w+");
+            ret = PEM_write_bio_RSAPublicKey(keybio, rsa);
+            if (ret != 1)
+                throw robustFileDatingexception("BN_set_word failed" + DEBUGINFORMATION);
+
+            // 3. save private key
+            keybio = BIO_new_file((name + "_private" + ".pem").c_str(), "w+");
+            ret = PEM_write_bio_RSAPrivateKey(keybio, rsa, NULL, NULL, 0, NULL, NULL);
+            if (ret != 1)
+                throw robustFileDatingexception("BN_set_word failed" + DEBUGINFORMATION);
+
         } else 
             generateRSAKeyPair(std::string(argv[2]));
     } else if (argc >= 3) {

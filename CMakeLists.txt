@@ -4,7 +4,7 @@ project(robustFileDating)
 set(CMAKE_CXX_STANDARD 17)
 
 if (UNIX)
-    set(CMAKE_CXX_FLAGS "-Og -Wl,--export-dynamic")
+    set(CMAKE_CXX_FLAGS "-O4")
 endif()
 
 # Adding extra compilation flags for UNIX
