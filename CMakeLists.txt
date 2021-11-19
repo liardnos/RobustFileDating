@@ -50,8 +50,10 @@ link_directories(${CONAN_LIB_DIRS} ${CONAN_BIN_DIRS})
 
 #Client
 add_executable(robustFileDating
-${SRC_CLI})
+    ${SRC_CLI}
+)
 
 target_link_libraries(robustFileDating
     ${CONAN_LIBS}
+    CONAN_PKG::openssl
 )

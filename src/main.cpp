@@ -6,7 +6,7 @@
 #include <filesystem>
 #include <algorithm>
 #include <map>
-#include <unistd.h>
+#include <string>
 
 #include <string.h>
 #include <sys/types.h>
@@ -359,7 +359,8 @@ int main(int argc, char **argv) {
 
         unsigned char *cryptedBuf = string_tohash(hashMap["crypt"]);
 
-        unsigned char buf[rsaPublicKeySize+1];
+        //unsigned char buf[rsaPublicKeySize+1];
+        unsigned char *buf = new unsigned char[rsaPublicKeySize+1];
         memset(buf, 0, rsaPublicKeySize);
         int rsa_outlen = RSA_public_decrypt(
             rsaPublicKeySize, (unsigned char *)cryptedBuf, (unsigned char *)buf,
