@@ -266,6 +266,8 @@ public:
                 if (!_go)
                     break;
             }
+
+            RSA_free(rsa);
             count++;
         }
     }
