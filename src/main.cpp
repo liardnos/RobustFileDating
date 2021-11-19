@@ -44,10 +44,10 @@ class robustFileDatingexception : public std::exception {
 #define PBWIDTH 60
 
 void printProgress(double percentage) {
-    int val = (int) (percentage * 100);
+    float val = (percentage * 100);
     int lpad = (int) (percentage * PBWIDTH);
     int rpad = PBWIDTH - lpad;
-    printf("\r%3d%% [%.*s%*s]", val, lpad, PBSTR, rpad, "");
+    printf("\r%3f2%% [%.*s%*s]", val, lpad, PBSTR, rpad, "");
     fflush(stdout);
 }
 
@@ -220,7 +220,8 @@ int main(int argc, char **argv) {
                     rsaPubStr[j-strlen("-----END RSA PUBLIC KEY-----")] = 0;
                 }
                 if (count % 128) {
-                    std::cout << count << "/" << proba << std::endl;
+                    printProgress((float)count/proba);
+                    std::cout << count << "/" << proba;
                 }
                 count++;
             } while (!strstr(rsaPubStr, argv[3]));
