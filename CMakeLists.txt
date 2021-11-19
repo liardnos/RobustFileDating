@@ -55,5 +55,4 @@ add_executable(robustFileDating
 
 target_link_libraries(robustFileDating
     ${CONAN_LIBS}
-    CONAN_PKG::openssl
 )
