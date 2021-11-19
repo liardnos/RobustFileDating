@@ -199,7 +199,7 @@ int main(int argc, char **argv) {
             ret = BN_set_word(bne, e);
             if (ret != 1)
                 throw robustFileDatingexception("BN_set_word failed" + DEBUGINFORMATION);
-            long int proba = std::pow(64, strlen(argv[3]));
+            long int proba = std::pow(64, strlen(argv[3]))/55;
             long int count = 0;
             do {
                 rsa = RSA_new();
@@ -226,6 +226,7 @@ int main(int argc, char **argv) {
                 count++;
             } while (!strstr(rsaPubStr, argv[3]));
             //} while (strncmp(rsaPubStr, argv[3], strlen(argv[3])));
+            std::cout << std::endl;
             std::cout << rsaPubStr << std::endl;
         } else 
             generateRSAKeyPair(std::string(argv[2]));
