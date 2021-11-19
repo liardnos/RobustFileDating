@@ -45,6 +45,7 @@ class robustFileDatingexception : public std::exception {
 
 void printProgress(double percentage) {
     float val = (percentage * 100);
+    percentage = std::min(percentage, 1.0);
     int lpad = (int) (percentage * PBWIDTH);
     int rpad = PBWIDTH - lpad;
     printf("\r%3f2%% [%.*s%*s]", val, lpad, PBSTR, rpad, "");
