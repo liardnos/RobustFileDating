@@ -224,7 +224,7 @@ int main(int argc, char **argv) {
                     std::cout << " " << count << "/" << proba;
                 }
                 count++;
-            } while (strstr(rsaPubStr, argv[3]) == 0 || strstr(rsaPubStr, argv[3])-rsaPubStr > 16);
+            } while (!strstr(rsaPubStr, argv[3]));
             //} while (strncmp(rsaPubStr, argv[3], strlen(argv[3])));
             // 2. save public key
             std::string name = argv[2];
