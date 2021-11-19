@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <algorithm>
 #include <map>
+#include <unistd.h>
 
 #include <string.h>
 #include <sys/types.h>
@@ -14,6 +15,8 @@
 #include <openssl/sha.h>
 #include <openssl/rsa.h>
 #include <openssl/pem.h>
+
+#include <cmath>
 
 #if __WIN32__
 #define stat64 _stat64
@@ -181,9 +184,50 @@ int sha256_file(char *path, unsigned char hash[SHA256_DIGEST_LENGTH]) {
 int main(int argc, char **argv) {
     int returnValue = 0;
     auto hashClock = std::chrono::high_resolution_clock::now();
-    if (std::string(argv[1]) == std::string("-g") && argc == 3) {
+    if (std::string(argv[1]) == std::string("-g") && (argc == 3 || argc == 4)) {
         std::cout << "generate keys: " << argv[2] << std::endl;
-        generateRSAKeyPair(std::string(argv[2]));        
+        if (argc == 4) {
+            char *rsaPubStr = new char[1024*1024];
+            BIO * keybio = BIO_new(BIO_s_mem());
+            int ret = 0;
+            RSA *rsa = NULL;
+            BIGNUM *bne = NULL;
+            int bits = 512;
+            unsigned long e = RSA_F4;
+
+            bne = BN_new();
+            ret = BN_set_word(bne, e);
+            if (ret != 1)
+                throw robustFileDatingexception("BN_set_word failed" + DEBUGINFORMATION);
+            long int proba = std::pow(64, strlen(argv[3]));
+            long int count = 0;
+            do {
+                rsa = RSA_new();
+                ret = RSA_generate_key_ex(rsa, bits, bne, NULL);
+                if (ret != 1)
+                    throw robustFileDatingexception("RSA_generate_key_ex failed" + DEBUGINFORMATION);
+
+                PEM_write_bio_RSAPublicKey(keybio, rsa);
+                std::string res = "";
+                memset(rsaPubStr, 0, 1024*1024);
+                BIO_read(keybio, rsaPubStr, 1024*1024);
+                {
+                    int j = 0;
+                    int i = strlen("-----BEGIN RSA PUBLIC KEY-----");
+                    for (; rsaPubStr[i]; i++) 
+                        if (rsaPubStr[i] != '\n')
+                            rsaPubStr[j++] = rsaPubStr[i];
+                    rsaPubStr[j-strlen("-----END RSA PUBLIC KEY-----")] = 0;
+                }
+                if (count % 128) {
+                    std::cout << count << "/" << proba << std::endl;
+                }
+                count++;
+            } while (!strstr(rsaPubStr, argv[3]));
+            //} while (strncmp(rsaPubStr, argv[3], strlen(argv[3])));
+            std::cout << rsaPubStr << std::endl;
+        } else 
+            generateRSAKeyPair(std::string(argv[2]));
     } else if (argc >= 3) {
 
         FILE *fp = fopen((argv[1] + std::string("_private.pem")).c_str(), "r+");
@@ -235,7 +279,6 @@ int main(int argc, char **argv) {
                     if (rsaPubStr[i] != '\n')
                         rsaPubStr[j++] = rsaPubStr[i];
                 rsaPubStr[j-strlen("-----END RSA PUBLIC KEY-----")] = 0;
-
             }
 
             std::string const path = argv[fileid] + std::string(".date");
