@@ -20,11 +20,14 @@
 
 #include <cmath>
 
+#include <unistd.h>
+
+
 #if __WIN32__
 #define stat64 _stat64
 #endif
 
-#define THREAD_COUNT 7
+#define THREAD_COUNT 1
 
 #define BLOCK_SIZE ((size_t)1024*1024)
 
@@ -105,12 +108,12 @@ void generateRSAKeyPair(std::string const &name) {
 	BN_free(bne);
 }
 
-void sha256_hash_string(unsigned char hash[SHA256_DIGEST_LENGTH], char outputBuffer[65]) {
+void sha256_hash_to_string(unsigned char hash[SHA256_DIGEST_LENGTH], char outputBuffer[SHA256_DIGEST_LENGTH*2+1]) {
     int i = 0;
     for(i = 0; i < SHA256_DIGEST_LENGTH; i++)
         sprintf(outputBuffer + (i * 2), "%02x", hash[i]);
 
-    outputBuffer[64] = 0;
+    outputBuffer[SHA256_DIGEST_LENGTH*2] = 0;
 }
 
 std::string hash_tostring(unsigned char *hash, unsigned int size) {
@@ -169,18 +172,23 @@ int sha256_file(char *path, unsigned char hash[SHA256_DIGEST_LENGTH]) {
     SHA256_Init(&sha256);
     char * const buffer = new char[BLOCK_SIZE];
     if(!buffer)  throw robustFileDatingexception("cannot alloc buffer" + DEBUGINFORMATION);
+    int count = 0;
     while (size) {
-        printProgress(1-(double)size/size_back);
+        if (!(count % 32)) {
+            printProgress(1-(double)size/size_back);
+        }
         size_t readSize = std::min(BLOCK_SIZE, (size_t)size);
         file.read(buffer, readSize);
         size -= readSize;
         SHA256_Update(&sha256, buffer, readSize);
+        count++;
     }
+
     printProgress(1-(double)size/size_back);
     std::cout << std::endl;
     SHA256_Final(hash, &sha256);
 
-    //sha256_hash_string(hash, outputBuffer);
+    //sha256_hash_to_string(hash, outputBuffer);
     file.close();
     delete[] buffer;
     return 0;
@@ -194,9 +202,7 @@ public:
 
     }
 
-    ~KeyFinder() {
-
-    }
+    ~KeyFinder() {}
 
     RSA *find() {
         for (uint i = 0; i < _thread_count; i++) {
@@ -207,16 +213,15 @@ public:
                 }
             ));
         }
-
         for (auto &thread : _threads)
             thread.join();
         return _ret;
     }
 
     void find_a_key(char *str, int id) {
-
-        char *rsaPubStr = new char[1024*1024];
-        BIO * keybio = BIO_new(BIO_s_mem());
+        int const bufsize = 1024 * 1024;
+        char *rsaPubStr = new char[bufsize];
+        BIO *keybio = BIO_new(BIO_s_mem());
         int ret = 0;
         RSA *rsa = NULL;
         BIGNUM *bne = NULL;
@@ -236,10 +241,23 @@ public:
             if (ret != 1)
                 throw robustFileDatingexception("RSA_generate_key_ex failed" + DEBUGINFORMATION);
 
+        /*{
             PEM_write_bio_RSAPublicKey(keybio, rsa);
+            SHA256_CTX sha256;
+            SHA256_Init(&sha256);
+
+            SHA256_Update(&sha256, buffer, readSize);
+            unsigned char hash[SHA256_DIGEST_LENGTH];
+            SHA256_Final(hash, &sha256);
+
+            char outputBuffer[SHA256_DIGEST_LENGTH*2+1];
+            sha256_hash_to_string(hash, outputBuffer)
+        }*/
+
             std::string res = "";
-            memset(rsaPubStr, 0, 1024*1024);
-            BIO_read(keybio, rsaPubStr, 1024*1024);
+            memset(rsaPubStr, 0, bufsize);
+            int ret = BIO_read(keybio, rsaPubStr, bufsize);
+            std::cout << ret << std::endl;
             {
                 int j = 0;
                 int i = strlen("-----BEGIN RSA PUBLIC KEY-----");
@@ -247,28 +265,30 @@ public:
                     if (rsaPubStr[i] != '\n')
                         rsaPubStr[j++] = rsaPubStr[i];
                 rsaPubStr[j-strlen("-----END RSA PUBLIC KEY-----")] = 0;
+                std::cout << rsaPubStr << std::endl;
             }
 
             if (strstr(rsaPubStr, str)) {
+                std::cout << "found it" << std::endl;
                 std::lock_guard<std::mutex> lock(_mutex);
                 _go = false;
                 _ret = rsa;
-                std::cout << rsaPubStr << std::endl;
+                std::cout << std::endl << rsaPubStr << std::endl;
             }
             //std::cout << "ici" << count << " id="<< id << std::endl;
             { // end condition
                 std::lock_guard<std::mutex> lock(_mutex);
-                _count++;
-                if (!(count % 50) && id == 0) {
+                if (!(count % 32) && id == 0) {
                     printProgress((float)_count/proba);
                     std::cout << " " << _count << "/" << proba;
                 }
+                _count++;
                 if (!_go)
                     break;
             }
+            count++;
 
             RSA_free(rsa);
-            count++;
         }
     }
 
@@ -284,6 +304,20 @@ public:
 
 
 int main(int argc, char **argv) {
+
+    if (argc == 1) {
+        std::cout << 
+        "Genrate a new key pair" << std::endl <<
+        "./robustFileDating -g [keyName]" << std::endl << 
+        std::endl << 
+        "generate a .date for a file" << std::endl <<
+        "./robustFileDating [keyName] file1 file2 ..." << std::endl << 
+        std::endl << 
+        "check file and header integrity"  << std::endl << 
+        "./robustFileDating file" << std::endl;
+        return 0;
+    }
+
     int returnValue = 0;
     auto hashClock = std::chrono::high_resolution_clock::now();
     if (std::string(argv[1]) == std::string("-g") && (argc == 3 || argc == 4)) {
@@ -490,7 +524,7 @@ int main(int argc, char **argv) {
         if (good) {
             std::cout << "signature date: " << saveTime << std::endl;
         } else {
-            std::cout << "!!!file or .date has been modified!!!" << std::endl;
+            std::cout << "\"" << argv[1] << "\"" << " and .date hash do not match, one of them has been modified" << std::endl;
             returnValue = 84;
         }
         delete[] cryptedBuf;
